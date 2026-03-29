@@ -1,0 +1,65 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "targetDefaults": {
+    "@nx/js:tsc": {
+      "cache": true,
+      "dependsOn": [
+        "validate-no-file-import-cycles",
+        "architecture:validate-complete",
+        "^build"
+      ],
+      "inputs": ["default", "^default"]
+    },
+    "lint": {
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/eslint.config.mjs",
+        "{workspaceRoot}/eslint.webpieces.config.mjs"
+      ]
+    },
+    "validate-code": {
+      "options": {
+        "methodMaxLimit": {
+          "limit": 80,
+          "mode": "NEW_AND_MODIFIED_METHODS",
+          "disableAllowed": false
+        },
+        "fileMaxLimit": {
+          "limit": 902,
+          "mode": "MODIFIED_FILES",
+          "disableAllowed": false
+        },
+        "requireReturnType": {
+          "mode": "NEW_AND_MODIFIED_METHODS",
+          "disableAllowed": false
+        },
+        "noInlineTypeLiterals": {
+          "mode": "NEW_AND_MODIFIED_METHODS",
+          "disableAllowed": false
+        },
+        "noAnyUnknown": {
+          "mode": "MODIFIED_CODE",
+          "disableAllowed": true
+        },
+        "noDestructure": {
+          "mode": "MODIFIED_CODE",
+          "disableAllowed": false
+        }
+      }
+    }
+  },
+  "plugins": [
+    {
+      "plugin": "@nx/eslint/plugin",
+      "options": {
+        "targetName": "lint",
+        "useFlatConfig": true
+      }
+    },
+    {
+      "plugin": "@webpieces/dev-config",
+      "options": {}
+    }
+  ]
+}
