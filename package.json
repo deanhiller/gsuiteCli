@@ -29,7 +29,7 @@
     "@types/node": "^22.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
-    "@webpieces/dev-config": "^0.2.92",
+    "@webpieces/dev-config": "^0.2.94",
     "eslint": "^8.57.1",
     "globals": "^16.0.0",
     "nx": "^21.0.0",
