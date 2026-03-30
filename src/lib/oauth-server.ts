@@ -1,8 +1,23 @@
 import * as http from 'node:http';
 import * as url from 'node:url';
+import * as net from 'node:net';
 
-export function waitForAuthCode(port: number): Promise<string> {
-    return new Promise((resolve, reject) => {
+export interface OAuthCallbackServer {
+    port: number;
+    codePromise: Promise<string>;
+}
+
+export function startCallbackServer(): Promise<OAuthCallbackServer> {
+    return new Promise((resolveStart, rejectStart) => {
+        let resolveCode: (code: string) => void;
+        let rejectCode: (err: Error) => void;
+        let listenPort: number = 0;
+
+        const codePromise: Promise<string> = new Promise((res, rej) => {
+            resolveCode = res;
+            rejectCode = rej;
+        });
+
         const server: http.Server = http.createServer((req, res) => {
             if (!req.url) {
                 res.writeHead(400);
@@ -10,7 +25,7 @@ export function waitForAuthCode(port: number): Promise<string> {
                 return;
             }
 
-            const parsed: url.URL = new url.URL(req.url, `http://localhost:${port}`);
+            const parsed: url.URL = new url.URL(req.url, `http://localhost:${listenPort}`);
             const code: string | null = parsed.searchParams.get('code');
             const error: string | null = parsed.searchParams.get('error');
 
@@ -18,7 +33,7 @@ export function waitForAuthCode(port: number): Promise<string> {
                 res.writeHead(200, { 'Content-Type': 'text/html' });
                 res.end('<html><body><h1>Authorization failed</h1><p>You can close this tab.</p></body></html>');
                 server.close();
-                reject(new Error(`OAuth error: ${error}`));
+                rejectCode(new Error(`OAuth error: ${error}`));
                 return;
             }
 
@@ -26,7 +41,7 @@ export function waitForAuthCode(port: number): Promise<string> {
                 res.writeHead(200, { 'Content-Type': 'text/html' });
                 res.end('<html><body><h1>Login successful!</h1><p>You can close this tab.</p></body></html>');
                 server.close();
-                resolve(code);
+                resolveCode(code);
                 return;
             }
 
@@ -34,12 +49,13 @@ export function waitForAuthCode(port: number): Promise<string> {
             res.end('Not found');
         });
 
-        server.listen(port, () => {
-            // Server is ready
+        server.listen(0, () => {
+            listenPort = (server.address() as net.AddressInfo).port;
+            resolveStart({ port: listenPort, codePromise });
         });
 
         server.on('error', (err: Error) => {
-            reject(new Error(`Failed to start OAuth callback server on port ${port}: ${err.message}`));
+            rejectStart(new Error(`Failed to start OAuth callback server: ${err.message}`));
         });
     });
 }

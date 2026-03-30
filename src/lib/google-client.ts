@@ -1,5 +1,5 @@
 import { google, type gmail_v1, type drive_v3, type sheets_v4 } from 'googleapis';
-import { loadClientCredentials, OAUTH_REDIRECT_URI } from '../config.js';
+import { loadClientCredentials } from '../config.js';
 import { getToken } from './token-store.js';
 import type { OAuth2Client } from 'google-auth-library';
 
@@ -14,7 +14,6 @@ export function getAuthClient(email: string): OAuth2Client {
     const oauth2Client = new google.auth.OAuth2(
         creds.client_id,
         creds.client_secret,
-        OAUTH_REDIRECT_URI,
     );
 
     oauth2Client.setCredentials({

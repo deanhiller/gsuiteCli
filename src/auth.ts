@@ -1,8 +1,8 @@
 import { google } from 'googleapis';
 import open from 'open';
-import { loadClientCredentials, SCOPES, OAUTH_REDIRECT_URI, promptUser } from './config.js';
+import { loadClientCredentials, SCOPES } from './config.js';
 import { setToken, listAccounts } from './lib/token-store.js';
-import { waitForAuthCode } from './lib/oauth-server.js';
+import { startCallbackServer } from './lib/oauth-server.js';
 
 interface IdTokenPayload {
     email?: string;
@@ -19,13 +19,25 @@ function decodeIdTokenEmail(idToken: string): string | undefined {
     return decoded.email;
 }
 
-export async function doLoginOne(): Promise<string> {
+export async function doLogin(): Promise<string> {
     const creds = loadClientCredentials();
+    const existing: string[] = listAccounts();
+
+    if (existing.length > 0) {
+        console.log('Already logged-in accounts:');
+        for (const account of existing) {
+            console.log(`  ${account}`);
+        }
+        console.log('');
+    }
+
+    const { port, codePromise } = await startCallbackServer();
+    const redirectUri: string = `http://localhost:${port}/oauth2callback`;
 
     const oauth2Client = new google.auth.OAuth2(
         creds.client_id,
         creds.client_secret,
-        OAUTH_REDIRECT_URI,
+        redirectUri,
     );
 
     const authUrl: string = oauth2Client.generateAuthUrl({
@@ -34,13 +46,12 @@ export async function doLoginOne(): Promise<string> {
         prompt: 'consent',
     });
 
-    const port: number = 3000;
-    const codePromise: Promise<string> = waitForAuthCode(port);
-
     console.log('Opening browser for Google login...');
+    console.log('Select the account you want to add.\n');
     await open(authUrl);
 
     const code: string = await codePromise;
+    console.log('Browser callback received, exchanging token...');
 
     const { tokens } = await oauth2Client.getToken(code);
 
@@ -73,37 +84,12 @@ export async function doLoginOne(): Promise<string> {
     });
 
     console.log(`Logged in as ${email}`);
+
+    const allAccounts: string[] = listAccounts();
+    console.log(`\n${allAccounts.length} account(s) now logged in:`);
+    for (const account of allAccounts) {
+        console.log(`  ${account}`);
+    }
+
     return email;
-}
-
-export async function doLoginAll(): Promise<void> {
-    const existing: string[] = listAccounts();
-    if (existing.length > 0) {
-        console.log('Already logged-in accounts:');
-        for (const account of existing) {
-            console.log(`  ${account}`);
-        }
-        console.log('');
-    }
-
-    let addMore: boolean = true;
-    let count: number = 0;
-
-    while (addMore) {
-        count++;
-        console.log(`--- Login #${count} ---`);
-        await doLoginOne();
-
-        const accounts: string[] = listAccounts();
-        console.log(`\nCurrently logged in (${accounts.length} account(s)):`);
-        for (const account of accounts) {
-            console.log(`  ${account}`);
-        }
-
-        const answer: string = await promptUser('\nAdd another account? (y/n): ');
-        addMore = answer.toLowerCase().startsWith('y');
-    }
-
-    const finalAccounts: string[] = listAccounts();
-    console.log(`\nDone! ${finalAccounts.length} account(s) ready.`);
 }

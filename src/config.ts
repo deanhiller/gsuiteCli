@@ -15,9 +15,10 @@ export const SCOPES: string[] = [
     'email',
 ];
 
-export const OAUTH_REDIRECT_URI: string = 'http://localhost:3000/oauth2callback';
 
 export interface ClientCredentials {
+    gcp_email: string;
+    project_id: string;
     client_id: string;
     client_secret: string;
 }
