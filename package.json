@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "commander": "^14.0.0",
-    "googleapis": "^148.0.0",
+    "googleapis": "^171.4.0",
     "open": "^10.1.0"
   },
   "devDependencies": {

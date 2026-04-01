@@ -211,25 +211,32 @@ export function registerGmailCommands(program: Command): void {
 
     gmail
         .command('move')
-        .argument('<messageId>', 'Message ID to move')
-        .description('Move a message out of inbox into a label')
+        .argument('<messageIds...>', 'One or more message IDs to move')
+        .description('Move messages from one label to another (up to 1000 per call)')
+        .requiredOption('--from <labelName>', 'Source label name (e.g. INBOX, MyLabel)')
         .requiredOption('--to <labelName>', 'Target label name')
         .option('-a, --account <email>', 'Account to use')
-        .action(async (messageId: string, opts: { to: string; account?: string }) => {
+        .action(async (messageIds: string[], opts: { from: string; to: string; account?: string }) => {
             const email: string = resolveAccount(opts.account);
             const client = getGmail(email);
-            const labelId: string = await resolveLabelId(client, opts.to);
+            const fromLabelId: string = await resolveLabelId(client, opts.from);
+            const toLabelId: string = await resolveLabelId(client, opts.to);
 
-            await client.users.messages.modify({
-                userId: 'me',
-                id: messageId,
-                requestBody: {
-                    addLabelIds: [labelId],
-                    removeLabelIds: ['INBOX'],
-                },
-            });
+            const batchSize = 1000;
+            for (let i = 0; i < messageIds.length; i += batchSize) {
+                const batch = messageIds.slice(i, i + batchSize);
+                await client.users.messages.batchModify({
+                    userId: 'me',
+                    requestBody: {
+                        ids: batch,
+                        addLabelIds: [toLabelId],
+                        removeLabelIds: [fromLabelId],
+                    },
+                });
+                console.log(`Moved batch ${Math.floor(i / batchSize) + 1}: ${batch.length} message(s) from "${opts.from}" to "${opts.to}".`);
+            }
 
-            console.log(`Moved message ${messageId} to "${opts.to}".`);
+            console.log(`Done. Moved ${messageIds.length} message(s) total.`);
         });
 
     gmail
