@@ -319,6 +319,25 @@ export function registerGmailCommands(program: Command): void {
         });
 
     gmail
+        .command('count')
+        .argument('<query>', 'Gmail search query (e.g. "label:MyLabel", "is:unread", "from:user@example.com")')
+        .description('Get approximate message count for a search query')
+        .option('-a, --account <email>', 'Account to use')
+        .action(async (query: string, opts: { account?: string }) => {
+            const email: string = resolveAccount(opts.account);
+            const client = getGmail(email);
+
+            const resp = await client.users.messages.list({
+                userId: 'me',
+                q: query,
+                maxResults: 1,
+            });
+
+            const estimate = resp.data.resultSizeEstimate ?? 0;
+            console.log(`Approximate count: ${estimate}`);
+        });
+
+    gmail
         .command('search')
         .argument('<query>', 'Gmail search query (e.g. "from:user@example.com", "is:unread", "label:MyLabel")')
         .description('Search messages')
