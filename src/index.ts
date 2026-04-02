@@ -7,6 +7,7 @@ import { registerGmailCommands } from './commands/gmail-commands.js';
 import { registerDriveCommands } from './commands/drive-commands.js';
 import { registerSheetsCommands } from './commands/sheets-commands.js';
 import { registerDocsCommands } from './commands/docs-commands.js';
+import { registerCalendarCommands } from './commands/calendar-commands.js';
 
 const program: Command = new Command();
 
@@ -21,6 +22,7 @@ registerGmailCommands(program);
 registerDriveCommands(program);
 registerSheetsCommands(program);
 registerDocsCommands(program);
+registerCalendarCommands(program);
 
 program.parseAsync(process.argv).catch((err: unknown) => {
     if (err instanceof Error) {

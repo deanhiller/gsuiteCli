@@ -1,4 +1,4 @@
-import { google, type gmail_v1, type drive_v3, type sheets_v4, type docs_v1 } from 'googleapis';
+import { google, type gmail_v1, type drive_v3, type sheets_v4, type docs_v1, type calendar_v3 } from 'googleapis';
 import { loadClientCredentials } from '../config.js';
 import { getToken } from './token-store.js';
 import type { OAuth2Client } from 'google-auth-library';
@@ -37,4 +37,8 @@ export function getSheets(email: string): sheets_v4.Sheets {
 
 export function getDocs(email: string): docs_v1.Docs {
     return google.docs({ version: 'v1', auth: getAuthClient(email) });
+}
+
+export function getCalendar(email: string): calendar_v3.Calendar {
+    return google.calendar({ version: 'v3', auth: getAuthClient(email) });
 }
