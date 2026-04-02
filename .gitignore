@@ -3,3 +3,17 @@ dist/
 .nx/
 .env
 *.js.map
+
+# OpenClaw
+.openclaw/
+AGENTS.md
+SOUL.md
+TOOLS.md
+USER.md
+IDENTITY.md
+HEARTBEAT.md
+MEMORY.md
+memory/
+
+# AI project docs (keep in repo)
+# CLAUDE.md

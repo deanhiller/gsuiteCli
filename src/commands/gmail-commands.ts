@@ -280,6 +280,49 @@ export function registerGmailCommands(program: Command): void {
         });
 
     gmail
+        .command('label-list')
+        .argument('<labelName>', 'Label name to list messages from')
+        .description('List all messages in a label (paginates through all results)')
+        .option('-a, --account <email>', 'Account to use')
+        .option('-m, --max <number>', 'Max messages per page', '100')
+        .action(async (labelName: string, opts: { account?: string; max: string }) => {
+            const email: string = resolveAccount(opts.account);
+            const client = getGmail(email);
+            const labelId: string = await resolveLabelId(client, labelName);
+            const maxResults: number = parseInt(opts.max, 10);
+
+            let pageToken: string | undefined;
+            let totalCount = 0;
+
+            do {
+                const listResp = await client.users.messages.list({
+                    userId: 'me',
+                    labelIds: [labelId],
+                    maxResults,
+                    pageToken,
+                });
+
+                const messages = listResp.data.messages;
+                if (!messages || messages.length === 0) {
+                    if (totalCount === 0) {
+                        console.log(`No messages found in label "${labelName}".`);
+                    }
+                    break;
+                }
+
+                await fetchAndPrintMessages(client, messages);
+                totalCount += messages.length;
+
+                pageToken = listResp.data.nextPageToken ?? undefined;
+                if (pageToken) {
+                    console.log(`--- Page break (${totalCount} messages so far) ---\n`);
+                }
+            } while (pageToken);
+
+            console.log(`Total: ${totalCount} message(s) in label "${labelName}".`);
+        });
+
+    gmail
         .command('label-create')
         .argument('<name>', 'Label name to create')
         .description('Create a new label')
