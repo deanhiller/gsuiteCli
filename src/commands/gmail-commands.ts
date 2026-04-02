@@ -344,6 +344,66 @@ export function registerGmailCommands(program: Command): void {
         });
 
     gmail
+        .command('label-edit')
+        .argument('<name>', 'Current label name')
+        .description('Edit a label (rename, change visibility, or set color)')
+        .option('-a, --account <email>', 'Account to use')
+        .option('-n, --new-name <name>', 'New label name')
+        .option('--list-visibility <visibility>', 'Label list visibility: labelShow, labelShowIfUnread, labelHide')
+        .option('--message-visibility <visibility>', 'Message list visibility: show, hide')
+        .option('--bg-color <color>', 'Background color hex (e.g. #16a765)')
+        .option('--text-color <color>', 'Text color hex (e.g. #ffffff)')
+        .action(async (name: string, opts: { account?: string; newName?: string; listVisibility?: string; messageVisibility?: string; bgColor?: string; textColor?: string }) => {
+            const email: string = resolveAccount(opts.account);
+            const client = getGmail(email);
+            const labelId: string = await resolveLabelId(client, name);
+
+            if (!opts.newName && !opts.listVisibility && !opts.messageVisibility && !opts.bgColor && !opts.textColor) {
+                console.error('Error: Provide at least one option to change (--new-name, --list-visibility, --message-visibility, --bg-color, --text-color).');
+                process.exit(1);
+            }
+
+            const requestBody: Record<string, unknown> = {};
+
+            if (opts.newName) {
+                requestBody.name = opts.newName;
+            }
+            if (opts.listVisibility) {
+                requestBody.labelListVisibility = opts.listVisibility;
+            }
+            if (opts.messageVisibility) {
+                requestBody.messageListVisibility = opts.messageVisibility;
+            }
+            if (opts.bgColor || opts.textColor) {
+                const color: Record<string, string> = {};
+                if (opts.bgColor) {
+                    color.backgroundColor = opts.bgColor;
+                }
+                if (opts.textColor) {
+                    color.textColor = opts.textColor;
+                }
+                requestBody.color = color;
+            }
+
+            const resp = await client.users.labels.update({
+                userId: 'me',
+                id: labelId,
+                requestBody,
+            });
+
+            console.log(`Updated label "${name}"${opts.newName ? ` → "${resp.data.name}"` : ''}`);
+            if (opts.listVisibility) {
+                console.log(`  List visibility: ${resp.data.labelListVisibility}`);
+            }
+            if (opts.messageVisibility) {
+                console.log(`  Message visibility: ${resp.data.messageListVisibility}`);
+            }
+            if (resp.data.color) {
+                console.log(`  Color: bg=${resp.data.color.backgroundColor}, text=${resp.data.color.textColor}`);
+            }
+        });
+
+    gmail
         .command('label-delete')
         .argument('<name>', 'Label name to delete')
         .description('Delete a label')
