@@ -17,3 +17,6 @@ memory/
 
 # AI project docs (keep in repo)
 # CLAUDE.md
+
+# Platform-specific node_modules backups
+node_modules_*/
