@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as readline from 'node:readline';
 
-export const CONFIG_DIR: string = path.join(os.homedir(), '.config', 'gsuite');
+export const CONFIG_DIR: string = path.join(os.homedir(), 'openclaw', '.config', 'gsuite');
 export const TOKENS_PATH: string = path.join(CONFIG_DIR, 'tokens.json');
 export const CREDENTIALS_PATH: string = path.join(CONFIG_DIR, 'client_credentials.json');
 
