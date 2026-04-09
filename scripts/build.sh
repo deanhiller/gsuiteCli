@@ -104,7 +104,7 @@ do_build() {
     echo ""
     echo "🔨 Running build..."
     if [ -f "nx.json" ]; then
-        NX_DAEMON=false npx nx run-many --target=build --all
+        NX_DAEMON=false npx nx run-many --target=build --all $EXTRA_ARGS
     elif grep -q '"build"' package.json 2>/dev/null; then
         npm run build
     else
@@ -116,7 +116,7 @@ do_lint() {
     echo ""
     echo "🔍 Running lint..."
     if [ -f "nx.json" ]; then
-        NX_DAEMON=false npx nx run-many --target=lint --all
+        NX_DAEMON=false npx nx run-many --target=lint --all $EXTRA_ARGS
     elif grep -q '"lint"' package.json 2>/dev/null; then
         npm run lint
     else
@@ -135,6 +135,8 @@ do_clean() {
 # ─────────────────────────────────────────────────────────────────────
 
 ACTION="${1:-default}"
+shift || true
+EXTRA_ARGS="$*"
 
 case "$ACTION" in
     swap)
@@ -153,9 +155,15 @@ case "$ACTION" in
         swap_node_modules
         do_lint
         ;;
+    --verbose)
+        swap_node_modules
+        EXTRA_ARGS="--verbose"
+        do_lint
+        ;;
     *)
-        echo "Usage: $0 [swap|build|lint|clean]"
+        echo "Usage: $0 [swap|build|lint|clean|--verbose]"
         echo "  (no args) = swap + lint"
+        echo "  --verbose = swap + lint with verbose output"
         exit 1
         ;;
 esac

@@ -1,7 +1,7 @@
 // @webpieces/dev-config ESLint Configuration
 // Only includes @webpieces custom rules
 
-import webpiecesPlugin from '@webpieces/dev-config/eslint-plugin';
+import webpiecesPlugin from '@webpieces/eslint-plugin';
 
 export default [
     {
