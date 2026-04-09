@@ -16,6 +16,7 @@ async function openIfConfirmed(urls: string[]): Promise<void> {
 }
 
 function runGcloud(args: string[]): string | null {
+    // eslint-disable-next-line @webpieces/no-unmanaged-exceptions -- gcloud may not be installed; returning null is the expected handling
     try {
         const result = child_process.execFileSync('gcloud', args, {
             encoding: 'utf-8',
@@ -23,7 +24,8 @@ function runGcloud(args: string[]): string | null {
             stdio: ['pipe', 'pipe', 'pipe'],
         });
         return result.trim();
-    } catch {
+    } catch (err: unknown) {
+        // const error = toError(err)
         return null;
     }
 }
@@ -33,6 +35,7 @@ function gcloudIsInstalled(): boolean {
 }
 
 function gcloudAuthLogin(email: string): boolean {
+    // eslint-disable-next-line @webpieces/no-unmanaged-exceptions -- gcloud auth may fail; returning false is the expected handling
     try {
         child_process.execFileSync('gcloud', ['auth', 'login', email, '--brief'], {
             encoding: 'utf-8',
@@ -40,7 +43,8 @@ function gcloudAuthLogin(email: string): boolean {
             stdio: 'inherit',
         });
         return true;
-    } catch {
+    } catch (err: unknown) {
+        // const error = toError(err)
         return false;
     }
 }
@@ -62,6 +66,134 @@ function gcloudListProjects(account: string): GcloudProject[] {
     return JSON.parse(output) as GcloudProject[];
 }
 
+async function resolveProjectId(hasGcloud: boolean, gcpEmail: string): Promise<string> {
+    let projectId: string = '';
+
+    if (hasGcloud) {
+        console.log(`\nAuthenticating ${gcpEmail} with gcloud...`);
+        const authOk: boolean = gcloudAuthLogin(gcpEmail);
+        if (!authOk) {
+            console.error('Error: gcloud auth failed. Falling back to manual setup.');
+        }
+
+        if (authOk) {
+            console.log('\nFetching your GCP projects...\n');
+            const projects: GcloudProject[] = gcloudListProjects(gcpEmail);
+
+            if (projects.length > 0) {
+                console.log('Your existing projects:');
+                for (let i = 0; i < projects.length; i++) {
+                    console.log(`  ${i + 1}. ${projects[i].projectId}  (${projects[i].name})`);
+                }
+                console.log(`  ${projects.length + 1}. Create a new project`);
+                console.log('');
+
+                const choice: string = await promptUser('Select a project (number): ');
+                const choiceNum: number = parseInt(choice, 10);
+
+                if (choiceNum >= 1 && choiceNum <= projects.length) {
+                    projectId = projects[choiceNum - 1].projectId;
+                    console.log(`Selected: ${projectId}`);
+                }
+            } else {
+                console.log('No existing projects found.');
+            }
+        }
+    }
+
+    if (!projectId) {
+        console.log('');
+        console.log(`  Create a project: ${GCP_CONSOLE}/projectcreate?authuser=${gcpEmail}`);
+        console.log('');
+        await openIfConfirmed([`${GCP_CONSOLE}/projectcreate?authuser=${gcpEmail}`]);
+        console.log('');
+        projectId = await promptUser('Enter your GCP Project ID: ');
+        if (!projectId) {
+            console.error('Error: A project ID is required.');
+            process.exit(1);
+        }
+    }
+
+    return projectId;
+}
+
+async function setupEnableApis(projectId: string, gcpEmail: string): Promise<void> {
+    const gmailApi: string = `${GCP_CONSOLE}/apis/library/gmail.googleapis.com?project=${projectId}&authuser=${gcpEmail}`;
+    const driveApi: string = `${GCP_CONSOLE}/apis/library/drive.googleapis.com?project=${projectId}&authuser=${gcpEmail}`;
+    const sheetsApi: string = `${GCP_CONSOLE}/apis/library/sheets.googleapis.com?project=${projectId}&authuser=${gcpEmail}`;
+
+    console.log(`\nSTEP 2: Enable APIs for project "${projectId}"`);
+    console.log('-------------------');
+    console.log(`  1. Gmail API:   ${gmailApi}`);
+    console.log(`  2. Drive API:   ${driveApi}`);
+    console.log(`  3. Sheets API:  ${sheetsApi}`);
+    console.log('');
+    await openIfConfirmed([gmailApi, driveApi, sheetsApi]);
+    await promptUser('\nPress Enter when all 3 APIs are enabled...');
+}
+
+async function setupOAuthClient(projectId: string, gcpEmail: string): Promise<void> {
+    const clientsUrl: string = `${GCP_CONSOLE}/auth/clients?project=${projectId}&authuser=${gcpEmail}`;
+
+    console.log('\nSTEP 3: Create OAuth Client ID');
+    console.log('------------------------------');
+    console.log(`  ${clientsUrl}\n`);
+    console.log('  - Click "+ Create Client" at the top');
+    console.log('  - Application type: select "Desktop app" from the dropdown');
+    console.log('  - Name: "Gsuite CLI"');
+    console.log('  - Click "Create"');
+    console.log('');
+    console.log('  *** IMPORTANT: Do NOT close/leave that screen after clicking Create! ***');
+    console.log('  *** The Client ID and Client Secret are shown only once.             ***');
+    console.log('  *** Copy them both and paste them below.                             ***');
+    console.log('');
+    await openIfConfirmed([clientsUrl]);
+
+    console.log('');
+    const clientId: string = await promptUser('Client ID: ');
+    const clientSecret: string = await promptUser('Client Secret: ');
+
+    if (!clientId || !clientSecret) {
+        console.error('Error: Both Client ID and Client Secret are required.');
+        process.exit(1);
+    }
+
+    const creds = {
+        gcp_email: gcpEmail,
+        project_id: projectId,
+        client_id: clientId,
+        client_secret: clientSecret,
+    };
+    fs.writeFileSync(CREDENTIALS_PATH, JSON.stringify(creds, null, 2), { mode: 0o600 });
+    console.log(`\nCredentials saved to ${CREDENTIALS_PATH}`);
+}
+
+async function setupConsentScreen(projectId: string, gcpEmail: string): Promise<void> {
+    const brandingUrl: string = `${GCP_CONSOLE}/auth/branding?project=${projectId}&authuser=${gcpEmail}`;
+
+    console.log('\nSTEP 4a: Branding');
+    console.log('-----------------');
+    console.log(`  ${brandingUrl}\n`);
+    console.log(`  - App name: "gsuite-cli"`);
+    console.log(`  - User support email: ${gcpEmail}`);
+    console.log(`  - Developer contact: ${gcpEmail}`);
+    console.log('');
+    await openIfConfirmed([brandingUrl]);
+    await promptUser('\nPress Enter when branding is configured...');
+
+    const audienceUrl: string = `${GCP_CONSOLE}/auth/audience?project=${projectId}&authuser=${gcpEmail}`;
+
+    console.log('\nSTEP 4b: Audience');
+    console.log('-----------------');
+    console.log(`  ${audienceUrl}\n`);
+    console.log('  - Publishing status: leave as "Testing"');
+    console.log('  - User Type: External');
+    console.log('  - Test users: add ALL your email addresses (the ones you\'ll use with gsuite)');
+    console.log('');
+    await openIfConfirmed([audienceUrl]);
+    await promptUser('\nPress Enter when audience is configured...');
+}
+
 export function registerSetupCommand(program: Command): void {
     program
         .command('setup')
@@ -81,7 +213,6 @@ export function registerSetupCommand(program: Command): void {
 
             console.log('=== gsuite setup ===\n');
 
-            // Check for gcloud
             const hasGcloud: boolean = gcloudIsInstalled();
             if (!hasGcloud) {
                 console.log('Note: gcloud CLI not found. Install it for a better experience:');
@@ -96,132 +227,13 @@ export function registerSetupCommand(program: Command): void {
                 process.exit(1);
             }
 
-            // Step 1: GCP Project — list existing or create new
             console.log('\nSTEP 1: GCP Project');
             console.log('-------------------');
+            const projectId: string = await resolveProjectId(hasGcloud, gcpEmail);
 
-            let projectId: string = '';
-
-            if (hasGcloud) {
-                console.log(`\nAuthenticating ${gcpEmail} with gcloud...`);
-                const authOk: boolean = gcloudAuthLogin(gcpEmail);
-                if (!authOk) {
-                    console.error('Error: gcloud auth failed. Falling back to manual setup.');
-                }
-
-                if (authOk) {
-                    console.log('\nFetching your GCP projects...\n');
-                    const projects: GcloudProject[] = gcloudListProjects(gcpEmail);
-
-                    if (projects.length > 0) {
-                        console.log('Your existing projects:');
-                        for (let i = 0; i < projects.length; i++) {
-                            console.log(`  ${i + 1}. ${projects[i].projectId}  (${projects[i].name})`);
-                        }
-                        console.log(`  ${projects.length + 1}. Create a new project`);
-                        console.log('');
-
-                        const choice: string = await promptUser('Select a project (number): ');
-                        const choiceNum: number = parseInt(choice, 10);
-
-                        if (choiceNum >= 1 && choiceNum <= projects.length) {
-                            projectId = projects[choiceNum - 1].projectId;
-                            console.log(`Selected: ${projectId}`);
-                        }
-                    } else {
-                        console.log('No existing projects found.');
-                    }
-                }
-            }
-
-            if (!projectId) {
-                // Manual fallback or "create new" selected
-                console.log('');
-                console.log(`  Create a project: ${GCP_CONSOLE}/projectcreate?authuser=${gcpEmail}`);
-                console.log('');
-                await openIfConfirmed([`${GCP_CONSOLE}/projectcreate?authuser=${gcpEmail}`]);
-                console.log('');
-                projectId = await promptUser('Enter your GCP Project ID: ');
-                if (!projectId) {
-                    console.error('Error: A project ID is required.');
-                    process.exit(1);
-                }
-            }
-
-            // Step 2: Enable APIs
-            const gmailApi: string = `${GCP_CONSOLE}/apis/library/gmail.googleapis.com?project=${projectId}&authuser=${gcpEmail}`;
-            const driveApi: string = `${GCP_CONSOLE}/apis/library/drive.googleapis.com?project=${projectId}&authuser=${gcpEmail}`;
-            const sheetsApi: string = `${GCP_CONSOLE}/apis/library/sheets.googleapis.com?project=${projectId}&authuser=${gcpEmail}`;
-
-            console.log(`\nSTEP 2: Enable APIs for project "${projectId}"`);
-            console.log('-------------------');
-            console.log(`  1. Gmail API:   ${gmailApi}`);
-            console.log(`  2. Drive API:   ${driveApi}`);
-            console.log(`  3. Sheets API:  ${sheetsApi}`);
-            console.log('');
-            await openIfConfirmed([gmailApi, driveApi, sheetsApi]);
-            await promptUser('\nPress Enter when all 3 APIs are enabled...');
-
-            // Step 3: Create OAuth Client ID (before consent screen — need the client_id/secret first)
-            const clientsUrl: string = `${GCP_CONSOLE}/auth/clients?project=${projectId}&authuser=${gcpEmail}`;
-
-            console.log('\nSTEP 3: Create OAuth Client ID');
-            console.log('------------------------------');
-            console.log(`  ${clientsUrl}\n`);
-            console.log('  - Click "+ Create Client" at the top');
-            console.log('  - Application type: select "Desktop app" from the dropdown');
-            console.log('  - Name: "Gsuite CLI"');
-            console.log('  - Click "Create"');
-            console.log('');
-            console.log('  *** IMPORTANT: Do NOT close/leave that screen after clicking Create! ***');
-            console.log('  *** The Client ID and Client Secret are shown only once.             ***');
-            console.log('  *** Copy them both and paste them below.                             ***');
-            console.log('');
-            await openIfConfirmed([clientsUrl]);
-
-            console.log('');
-            const clientId: string = await promptUser('Client ID: ');
-            const clientSecret: string = await promptUser('Client Secret: ');
-
-            if (!clientId || !clientSecret) {
-                console.error('Error: Both Client ID and Client Secret are required.');
-                process.exit(1);
-            }
-
-            const creds = {
-                gcp_email: gcpEmail,
-                project_id: projectId,
-                client_id: clientId,
-                client_secret: clientSecret,
-            };
-            fs.writeFileSync(CREDENTIALS_PATH, JSON.stringify(creds, null, 2), { mode: 0o600 });
-            console.log(`\nCredentials saved to ${CREDENTIALS_PATH}`);
-
-            // Step 4a: Branding
-            const brandingUrl: string = `${GCP_CONSOLE}/auth/branding?project=${projectId}&authuser=${gcpEmail}`;
-
-            console.log('\nSTEP 4a: Branding');
-            console.log('-----------------');
-            console.log(`  ${brandingUrl}\n`);
-            console.log(`  - App name: "gsuite-cli"`);
-            console.log(`  - User support email: ${gcpEmail}`);
-            console.log(`  - Developer contact: ${gcpEmail}`);
-            console.log('');
-            await openIfConfirmed([brandingUrl]);
-            await promptUser('\nPress Enter when branding is configured...');
-
-            // Step 4b: Audience
-            const audienceUrl: string = `${GCP_CONSOLE}/auth/audience?project=${projectId}&authuser=${gcpEmail}`;
-
-            console.log('\nSTEP 4b: Audience');
-            console.log('-----------------');
-            console.log(`  ${audienceUrl}\n`);
-            console.log('  - Publishing status: leave as "Testing"');
-            console.log('  - User Type: External');
-            console.log('  - Test users: add ALL your email addresses (the ones you\'ll use with gsuite)');
-            console.log('');
-            await openIfConfirmed([audienceUrl]);
-            await promptUser('\nPress Enter when audience is configured...');
+            await setupEnableApis(projectId, gcpEmail);
+            await setupOAuthClient(projectId, gcpEmail);
+            await setupConsentScreen(projectId, gcpEmail);
 
             console.log('\nSetup complete! Now run "gsuite auth login" to log in your accounts.');
         });

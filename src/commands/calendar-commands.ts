@@ -95,10 +95,7 @@ function endOfDay(dateStr?: string): string {
     return now.toISOString();
 }
 
-export function registerCalendarCommands(program: Command): void {
-    const cal: Command = program.command('calendar').description('Google Calendar operations');
-
-    // --- list / today ---
+function registerTodayCommand(cal: Command): void {
     cal
         .command('today')
         .description("List today's events")
@@ -127,8 +124,9 @@ export function registerCalendarCommands(program: Command): void {
                 formatEvent(event);
             }
         });
+}
 
-    // --- list events for a date range ---
+function registerListCommand(cal: Command): void {
     cal
         .command('list')
         .description('List events in a date range')
@@ -167,27 +165,9 @@ export function registerCalendarCommands(program: Command): void {
                 formatEvent(event);
             }
         });
+}
 
-    // --- get a single event ---
-    cal
-        .command('get')
-        .argument('<eventId>', 'Event ID')
-        .description('Get details of a specific event')
-        .option('-a, --account <email>', 'Account to use')
-        .option('-c, --calendar <id>', 'Calendar ID (default: primary)', 'primary')
-        .action(async (eventId: string, opts: { account?: string; calendar: string }) => {
-            const email: string = resolveAccount(opts.account);
-            const client = getCalendar(email);
-
-            const resp = await client.events.get({
-                calendarId: opts.calendar,
-                eventId,
-            });
-
-            formatEvent(resp.data);
-        });
-
-    // --- create event ---
+function registerCreateCommand(cal: Command): void {
     cal
         .command('create')
         .description('Create a calendar event')
@@ -221,10 +201,8 @@ export function registerCalendarCommands(program: Command): void {
                 summary: opts.title,
             };
 
-            // All-day event
             if (startParsed.date && endParsed.date) {
                 event.start = { date: startParsed.date };
-                // Google Calendar all-day end date is exclusive, so add one day
                 const endDate = new Date(endParsed.date);
                 endDate.setDate(endDate.getDate() + 1);
                 const ey = endDate.getFullYear();
@@ -256,31 +234,9 @@ export function registerCalendarCommands(program: Command): void {
             console.log(`Created event: "${resp.data.summary}" (ID: ${resp.data.id})`);
             console.log(`  Link: ${resp.data.htmlLink}`);
         });
+}
 
-    // --- quick-add (natural language) ---
-    cal
-        .command('quick-add')
-        .argument('<text>', 'Natural language event (e.g. "Lunch with Bob tomorrow at noon")')
-        .description('Create event from natural language text')
-        .option('-a, --account <email>', 'Account to use')
-        .option('-c, --calendar <id>', 'Calendar ID (default: primary)', 'primary')
-        .action(async (text: string, opts: { account?: string; calendar: string }) => {
-            const email: string = resolveAccount(opts.account);
-            const client = getCalendar(email);
-
-            const resp = await client.events.quickAdd({
-                calendarId: opts.calendar,
-                text,
-            });
-
-            console.log(`Created event: "${resp.data.summary}" (ID: ${resp.data.id})`);
-            if (resp.data.start) {
-                console.log(`  Start: ${formatDateTime(resp.data.start.dateTime, resp.data.start.date)}`);
-            }
-            console.log(`  Link: ${resp.data.htmlLink}`);
-        });
-
-    // --- edit/update event ---
+function registerEditCommand(cal: Command): void {
     cal
         .command('edit')
         .argument('<eventId>', 'Event ID to edit')
@@ -306,7 +262,6 @@ export function registerCalendarCommands(program: Command): void {
             const email: string = resolveAccount(opts.account);
             const client = getCalendar(email);
 
-            // Fetch current event
             const current = await client.events.get({
                 calendarId: opts.calendar,
                 eventId,
@@ -364,8 +319,49 @@ export function registerCalendarCommands(program: Command): void {
             console.log(`Updated event: "${resp.data.summary}"`);
             formatEvent(resp.data);
         });
+}
 
-    // --- delete event ---
+function registerSimpleCalCommands(cal: Command): void {
+    cal
+        .command('get')
+        .argument('<eventId>', 'Event ID')
+        .description('Get details of a specific event')
+        .option('-a, --account <email>', 'Account to use')
+        .option('-c, --calendar <id>', 'Calendar ID (default: primary)', 'primary')
+        .action(async (eventId: string, opts: { account?: string; calendar: string }) => {
+            const email: string = resolveAccount(opts.account);
+            const client = getCalendar(email);
+
+            const resp = await client.events.get({
+                calendarId: opts.calendar,
+                eventId,
+            });
+
+            formatEvent(resp.data);
+        });
+
+    cal
+        .command('quick-add')
+        .argument('<text>', 'Natural language event (e.g. "Lunch with Bob tomorrow at noon")')
+        .description('Create event from natural language text')
+        .option('-a, --account <email>', 'Account to use')
+        .option('-c, --calendar <id>', 'Calendar ID (default: primary)', 'primary')
+        .action(async (text: string, opts: { account?: string; calendar: string }) => {
+            const email: string = resolveAccount(opts.account);
+            const client = getCalendar(email);
+
+            const resp = await client.events.quickAdd({
+                calendarId: opts.calendar,
+                text,
+            });
+
+            console.log(`Created event: "${resp.data.summary}" (ID: ${resp.data.id})`);
+            if (resp.data.start) {
+                console.log(`  Start: ${formatDateTime(resp.data.start.dateTime, resp.data.start.date)}`);
+            }
+            console.log(`  Link: ${resp.data.htmlLink}`);
+        });
+
     cal
         .command('delete')
         .argument('<eventId>', 'Event ID to delete')
@@ -386,7 +382,6 @@ export function registerCalendarCommands(program: Command): void {
             console.log(`Deleted event ${eventId}.`);
         });
 
-    // --- list calendars ---
     cal
         .command('calendars')
         .description('List all calendars in the account')
@@ -402,16 +397,15 @@ export function registerCalendarCommands(program: Command): void {
                 return;
             }
 
-            for (const cal of calendars) {
-                const primary: string = cal.primary ? ' (primary)' : '';
-                console.log(`[${cal.id}] ${cal.summary ?? '(untitled)'}${primary}`);
-                if (cal.description) {
-                    console.log(`  ${cal.description}`);
+            for (const c of calendars) {
+                const primary: string = c.primary ? ' (primary)' : '';
+                console.log(`[${c.id}] ${c.summary ?? '(untitled)'}${primary}`);
+                if (c.description) {
+                    console.log(`  ${c.description}`);
                 }
             }
         });
 
-    // --- upcoming (next N events) ---
     cal
         .command('upcoming')
         .description('Show upcoming events')
@@ -442,4 +436,14 @@ export function registerCalendarCommands(program: Command): void {
                 formatEvent(event);
             }
         });
+}
+
+export function registerCalendarCommands(program: Command): void {
+    const cal: Command = program.command('calendar').description('Google Calendar operations');
+
+    registerTodayCommand(cal);
+    registerListCommand(cal);
+    registerSimpleCalCommands(cal);
+    registerCreateCommand(cal);
+    registerEditCommand(cal);
 }

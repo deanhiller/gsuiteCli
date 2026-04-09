@@ -51,9 +51,7 @@ async function fetchAndPrintMessages(client: gmail_v1.Gmail, messageIds: Array<{
     }
 }
 
-export function registerGmailCommands(program: Command): void {
-    const gmail: Command = program.command('gmail').description('Gmail operations');
-
+function registerReadCommands(gmail: Command): void {
     gmail
         .command('list')
         .description('List inbox messages')
@@ -139,6 +137,53 @@ export function registerGmailCommands(program: Command): void {
         });
 
     gmail
+        .command('search')
+        .argument('<query>', 'Gmail search query (e.g. "from:user@example.com", "is:unread", "label:MyLabel")')
+        .description('Search messages')
+        .option('-a, --account <email>', 'Account to use')
+        .option('-m, --max <number>', 'Max messages to show', '10')
+        .action(async (query: string, opts: { account?: string; max: string }) => {
+            const email: string = resolveAccount(opts.account);
+            const client = getGmail(email);
+            const maxResults: number = parseInt(opts.max, 10);
+
+            const listResp = await client.users.messages.list({
+                userId: 'me',
+                maxResults,
+                q: query,
+            });
+
+            const messages = listResp.data.messages;
+            if (!messages || messages.length === 0) {
+                console.log('No messages found.');
+                return;
+            }
+
+            await fetchAndPrintMessages(client, messages);
+        });
+
+    gmail
+        .command('count')
+        .argument('<query>', 'Gmail search query (e.g. "label:MyLabel", "is:unread", "from:user@example.com")')
+        .description('Get approximate message count for a search query')
+        .option('-a, --account <email>', 'Account to use')
+        .action(async (query: string, opts: { account?: string }) => {
+            const email: string = resolveAccount(opts.account);
+            const client = getGmail(email);
+
+            const resp = await client.users.messages.list({
+                userId: 'me',
+                q: query,
+                maxResults: 1,
+            });
+
+            const estimate = resp.data.resultSizeEstimate ?? 0;
+            console.log(`Approximate count: ${estimate}`);
+        });
+}
+
+function registerMessageActionCommands(gmail: Command): void {
+    gmail
         .command('send')
         .description('Send an email')
         .requiredOption('--to <address>', 'Recipient email')
@@ -166,25 +211,6 @@ export function registerGmailCommands(program: Command): void {
             });
 
             console.log(`Message sent (ID: ${resp.data.id})`);
-        });
-
-    gmail
-        .command('labels')
-        .description('List labels')
-        .option('-a, --account <email>', 'Account to use')
-        .action(async (opts: { account?: string }) => {
-            const email: string = resolveAccount(opts.account);
-            const client = getGmail(email);
-
-            const resp = await client.users.labels.list({ userId: 'me' });
-            const labels = resp.data.labels;
-            if (!labels || labels.length === 0) {
-                console.log('No labels found.');
-                return;
-            }
-            for (const label of labels) {
-                console.log(label.name ?? label.id);
-            }
         });
 
     gmail
@@ -237,6 +263,27 @@ export function registerGmailCommands(program: Command): void {
             }
 
             console.log(`Done. Moved ${messageIds.length} message(s) total.`);
+        });
+}
+
+function registerLabelBasicCommands(gmail: Command): void {
+    gmail
+        .command('labels')
+        .description('List labels')
+        .option('-a, --account <email>', 'Account to use')
+        .action(async (opts: { account?: string }) => {
+            const email: string = resolveAccount(opts.account);
+            const client = getGmail(email);
+
+            const resp = await client.users.labels.list({ userId: 'me' });
+            const labels = resp.data.labels;
+            if (!labels || labels.length === 0) {
+                console.log('No labels found.');
+                return;
+            }
+            for (const label of labels) {
+                console.log(label.name ?? label.id);
+            }
         });
 
     gmail
@@ -321,7 +368,9 @@ export function registerGmailCommands(program: Command): void {
 
             console.log(`Total: ${totalCount} message(s) in label "${labelName}".`);
         });
+}
 
+function registerLabelManagementCommands(gmail: Command): void {
     gmail
         .command('label-create')
         .argument('<name>', 'Label name to create')
@@ -420,51 +469,15 @@ export function registerGmailCommands(program: Command): void {
 
             console.log(`Deleted label "${name}".`);
         });
+}
 
-    gmail
-        .command('count')
-        .argument('<query>', 'Gmail search query (e.g. "label:MyLabel", "is:unread", "from:user@example.com")')
-        .description('Get approximate message count for a search query')
-        .option('-a, --account <email>', 'Account to use')
-        .action(async (query: string, opts: { account?: string }) => {
-            const email: string = resolveAccount(opts.account);
-            const client = getGmail(email);
+export function registerGmailCommands(program: Command): void {
+    const gmail: Command = program.command('gmail').description('Gmail operations');
 
-            const resp = await client.users.messages.list({
-                userId: 'me',
-                q: query,
-                maxResults: 1,
-            });
-
-            const estimate = resp.data.resultSizeEstimate ?? 0;
-            console.log(`Approximate count: ${estimate}`);
-        });
-
-    gmail
-        .command('search')
-        .argument('<query>', 'Gmail search query (e.g. "from:user@example.com", "is:unread", "label:MyLabel")')
-        .description('Search messages')
-        .option('-a, --account <email>', 'Account to use')
-        .option('-m, --max <number>', 'Max messages to show', '10')
-        .action(async (query: string, opts: { account?: string; max: string }) => {
-            const email: string = resolveAccount(opts.account);
-            const client = getGmail(email);
-            const maxResults: number = parseInt(opts.max, 10);
-
-            const listResp = await client.users.messages.list({
-                userId: 'me',
-                maxResults,
-                q: query,
-            });
-
-            const messages = listResp.data.messages;
-            if (!messages || messages.length === 0) {
-                console.log('No messages found.');
-                return;
-            }
-
-            await fetchAndPrintMessages(client, messages);
-        });
+    registerReadCommands(gmail);
+    registerMessageActionCommands(gmail);
+    registerLabelBasicCommands(gmail);
+    registerLabelManagementCommands(gmail);
 }
 
 interface PayloadPart {
